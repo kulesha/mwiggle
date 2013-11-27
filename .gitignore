@@ -16,3 +16,11 @@
 *.exe
 *.out
 *.app
+mwiggle
+
+# Test files
+*.wig
+
+# GIT Config file
+config
+
