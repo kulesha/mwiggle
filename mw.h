@@ -12,10 +12,14 @@ typedef unsigned char UCHAR;
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 0
 
+#define META_KEY_LEN 32
+#define META_VALUE_LEN 255
+#define REGION_NAME_LEN 32
+
 // meta key from the header
 typedef struct {
-  char k[32];
-  char v[255];
+  char k[META_KEY_LEN];
+  char v[META_VALUE_LEN];
 } META;
 
 // track record
@@ -30,7 +34,7 @@ typedef struct {
 
 // region record
 typedef struct {
-  char name[32];
+  char name[REGION_NAME_LEN];
   ULONG offset;
   ULONG size;
 } REGION;
