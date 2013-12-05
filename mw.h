@@ -9,8 +9,8 @@ typedef unsigned char UCHAR;
 #define MAX_TRACKS 50
 #define FORMAT_MWIG "wig"
 #define FORMAT_MBED "bed"
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 0
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 1
 
 #define META_KEY_LEN 32
 #define META_VALUE_LEN 255
