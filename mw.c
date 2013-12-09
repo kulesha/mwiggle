@@ -8,8 +8,14 @@ Contact: kulesh@gmail.com
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
-#include <dirent.h>
+#include <math.h> // atoi, atol
+#include <dirent.h> // readdir
+#include <sys/stat.h> // mkdir
+
+#include <error.h>
+#include <errno.h>
+
+#include <unistd.h> //chdir
 
 #include "mw.h"
 
@@ -18,13 +24,14 @@ Contact: kulesh@gmail.com
 TRECORD *troot = NULL, *tcur = NULL;
 RRECORD *rroot = NULL, *rcur = NULL;
 
-int create_index( char *fname, UINT taxon, char *assembly, char *desc ) {
+int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *desc ) {
   HEADER h;
   char hfile[250];
   FILE *hf;
   char cmd[1024];
-  double minV, maxV;
+  VALUE minV, maxV;
 
+  chdir(workdir);
   sprintf(hfile, "%s.head", "test01");
 
   sprintf(h.format, FORMAT_MWIG);
@@ -98,7 +105,7 @@ int create_index( char *fname, UINT taxon, char *assembly, char *desc ) {
   system(cmd);
 
 
-  sprintf(cmd, "rm *.chr* test01.* ");
+  //sprintf(cmd, "rm *.chr* test01.* ");
   //  printf(cmd);
   //printf("\n");
   system(cmd);
@@ -106,7 +113,7 @@ int create_index( char *fname, UINT taxon, char *assembly, char *desc ) {
   return 0;
 }
 
-int merge_regions ( int total ) {
+int merge_regions (char* workdir,  int total ) {
   struct dirent *e;
   DIR *d = opendir(".");
   FILE *r, *b;
@@ -116,7 +123,10 @@ int merge_regions ( int total ) {
   char *line = NULL;
   REGION a;
 
-  double* Values = malloc(sizeof(double) * total);
+  VALUE* Values = malloc(sizeof(VALUE) * total);
+  chdir(workdir);
+  d = opendir(".");
+
   printf("Merging regions ...\n");
   if (d) {
     sprintf(bfile, "%s.body", "test01");
@@ -132,7 +142,7 @@ int merge_regions ( int total ) {
 	  printf(" %s ( %s)\n", e->d_name, a.name);
 	  if ( (r = fopen(e->d_name, "r"))) {
 	    ULONG pos, curpos = -1;
-	    float val;
+	    VALUE val;
 	    int ind;
 	    int num;
 
@@ -144,10 +154,10 @@ int merge_regions ( int total ) {
 		if ( curpos != pos ) {
 		  if (curpos != -1) {
 		    fwrite(&curpos, sizeof(curpos), 1, b);
-		    fwrite(Values, sizeof(double), total, b);
+		    fwrite(Values, sizeof(VALUE), total, b);
 		  }
 		  curpos = pos;
-		  memset(Values, 0, total);
+		  memset(Values, 0, total * sizeof(VALUE));
 		} 
 		*(Values + ind) = val;
 	      }
@@ -180,12 +190,14 @@ int merge_regions ( int total ) {
   return 0;
 }
 
-int sort_regions ( int total ) {
+int sort_regions (char *workdir,  int total ) {
   
   struct dirent *e;
-  DIR *d = opendir(".");
+  DIR *d;
   char cmd[200];
+  chdir(workdir);
 
+  d = opendir(".");
   printf("Sorting regions ... \n");
   if (d) {
     while ( (e = readdir(d)) != NULL) {
@@ -201,32 +213,162 @@ int sort_regions ( int total ) {
   return 0;
 }
 
+char* get_tmp_folder (void) {
+  char *path = getenv("TMPDIR");
 
-int read_wig (char *fname, int idx, int total) {
+  if (!path) {
+    path = getenv("TMP");
+    if (!path) {
+      path = "/tmp";
+    }
+  }
+
+  char template[1024];
+  sprintf(template, "%s/mwXXXXXX", path);
+  return  mkdtemp(template);
+}
+
+int read_bedgraph (char *workdir, char *fname, int idx, int total) {
   FILE *src;
   FILE *header = NULL;
 
   char hfile[255];
-  char bfile[255];
 
   ssize_t read;
   size_t len = 0;
   char *line = NULL;
   
-  sprintf(hfile, "%s.head", fname);
-  sprintf(bfile, "%s.body", fname);
+  ULONG rStart, rEnd;
+  VALUE val;
+
+  int num ;
+  ULONG pos;
+ 
+  char region[50];
+  char curRegion[50] = "undefined";
+  char description[255] = "";
+  TRACK a;
+  VALUE minV;
+  VALUE maxV;
+  int vSet = 0;
+  char *slash, *dot;
+
+  if ((src = fopen(fname, "r"))) {
+    int ic = 0, dc = 0, vc = 0;
+    printf(" * adding bedgraph %d of %d (%s) \n", idx+1, total, fname);
+    //    printf(" * tmp folder %s\n", workdir);
+
+    while((read = getline(&line, &len, src)) > 0 ) {
+      ic ++;
+      if (*line == '#') {
+      } else {
+	dc ++;
+	if ((num = sscanf(line, "%s\t%ld\t%ld\t%f", region, &rStart, &rEnd, &val) == 4)) {
+	  vc ++;
+	  if (strcmp(curRegion, region) != 0) {
+	    //	      	      printf(" write %s \n", region);
+	    strcpy(curRegion, region);
+	    sprintf(hfile, "%s/%s.chr", workdir, region);
+	    //	    printf(" writing to %s\n", hfile);
+	    if (header) {
+	      fclose(header);
+	    }
+
+	    if ((header = fopen(hfile, "a+"))) {
+	      //		printf("opened %s (%d) \n", hfile, state);
+	    } else {
+	      printf(" Cannot open %s ", hfile);
+	      exit(-1);
+	    }
+	  }
+
+	  if (vSet) {
+	    if (minV > val ) {
+	      minV = val ;
+	    }
+	    if (maxV < val ) {
+	      maxV = val ;
+	    }
+	  } else {
+	    vSet = 1;
+	    minV = val;
+	    maxV = val;
+	  }
+
+	  for (pos = rStart; pos <=rEnd; pos ++) {
+	    fprintf(header, "%ld %f %d\n", pos, val, idx);
+	  }
+	}
+      }
+    }
+    fclose(header);
+    fclose(src);
+
+    //    printf("%d / %d / %d \n", vc, dc, ic);
+
+    tcur = (TRECORD *) malloc(sizeof(TRECORD));
+    slash = strrchr(fname, '/');
+    
+    if (slash) {
+      sprintf(a.desc, slash+1);
+    } else {
+      sprintf(a.desc, fname);
+    }
+    dot = strrchr(a.desc, '.');
+    if (dot) {
+      strncpy(a.name, a.desc, (dot - a.desc));
+    } else {
+      sprintf(a.name, a.desc);
+    }
+    sprintf(a.desc, description);
+    a.id = idx;
+    a.min = minV;
+    a.max = maxV;
+    a.ori = 1;
+    memcpy(&tcur->data, &a, sizeof(TRACK));
+    tcur->next = troot;
+    tcur->prev = NULL;
+
+    if (troot) {
+      troot->prev = tcur;
+    }
+    troot = tcur;
+  
+
+    if (line) {
+      free(line);
+    }
+    printf("\t values range: %f .. %f\n", minV, maxV);
+
+
+  } else {
+    printf("Error : could not open %s\n", fname);
+  }  
+  return 0;
+}
+
+int read_wig (char *workdir, char *fname, int idx, int total) {
+  FILE *src;
+  FILE *header = NULL;
+
+  char hfile[255];
+
+  ssize_t read;
+  size_t len = 0;
+  char *line = NULL;
+  
   int state = 0; // reading the step line
   char strStep[50], strChr[50], strSpan[50];
   int step = 0;
   int num ;
   long pos;
-  float val;
+  VALUE val;
   char region[50];
   char curRegion[50] = "undefined";
   char description[255] = "";
   TRACK a;
-  double minV;
-  double maxV;
+  VALUE minV;
+  VALUE maxV;
   int vSet = 0;
   char *slash, *dot;
 
@@ -252,7 +394,7 @@ int read_wig (char *fname, int idx, int total) {
 	    if (strcmp(curRegion, region) != 0) {
 	      //	      	      printf(" write %s \n", region);
 	      strcpy(curRegion, region);
-	      sprintf(hfile, "%s.chr", region);
+	      sprintf(hfile, "%s/%s.chr", workdir, region);
 	      if (header) {
 		fclose(header);
 	      }
@@ -343,7 +485,14 @@ int mw_create(char *fname, char **argv, int argc) {
   char files[MAX_TRACKS][MAX_PATH];
 
   int i, num = 0;
-  
+
+  char workdir[1024];
+
+  sprintf(workdir, "%s" , get_tmp_folder());
+
+  printf(" Working in %s\n", workdir);
+
+
   while (*argv) {
     if ((*argv)[0] == '-') {
       switch((*argv)[1]) {
@@ -379,17 +528,41 @@ int mw_create(char *fname, char **argv, int argc) {
     return -1;
   }
 
+  for(i= 0; i < num ; i++) {
+    char *ext = strrchr(files[i], '.');
+    if (ext) {
+      ext++;
+      if (strcmp(ext, "wig") == 0) {
+	if (read_wig(workdir, files[i], i, num) < 0) {
+	  printf("Error : could not parse WIG in %s\n", files[i]);
+	  return -1;
+	}
+      } else if (strcmp(ext, "bedgraph") == 0) {
+	if (read_bedgraph(workdir, files[i], i, num) < 0) {
+	  printf("Error : could not parse BedGraph in %s\n", files[i]);
+	  return -1;
+	}
+      } else {
+	printf(" Error: Unknown file format %s\n", files[i]);
+	return -1;
+      }
+
+    }
+  }
+
   printf("Taxon : %d\n", taxon);
   printf("Assembly : %s\n", assembly);
   printf("Description: %s\n", desc);
 
-  for(i= 0; i < num ; i++) {
-    read_wig(files[i], i, num);
+  if (sort_regions(workdir, num) < 0) {
+    return -1;
   }
-
-  sort_regions(num);
-  merge_regions(num);
-  create_index(fname, taxon, assembly, desc);
+  if (merge_regions(workdir, num) < 0) {
+    return -1;
+  }
+  if ( create_index(workdir, fname, taxon, assembly, desc) < 0) {
+    return -1;
+  }
 
   return 0;
 }
@@ -602,14 +775,14 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
       }
 
       if (region_offset != -1) {
-	double *values = malloc(sizeof(double) * (h.tracks));
+	VALUE *values = malloc(sizeof(VALUE) * (h.tracks));
 	fseek(f, region_offset, SEEK_SET);
 	cpos = ftell(f);
 	  
 	while (!feof(f) && (cpos < region_size) && (pos < start)) {
 	  if (fread(&pos, sizeof (ULONG) , 1, f)) {
 	  }
-	  if (fread(values, sizeof (double) , h.tracks, f)) {
+	  if (fread(values, sizeof (VALUE) , h.tracks, f)) {
 	  }
 	  cpos = ftell(f);
 	}
@@ -620,14 +793,14 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	    int v = 0;
 	    int idx;
 
-	    double *binvalues = malloc( sizeof(double) * winsize * h.tracks);
-	    memset(binvalues, 0, sizeof(double) * winsize * h.tracks);
+	    VALUE *binvalues = malloc( sizeof(VALUE) * winsize * h.tracks);
+	    memset(binvalues, 0, sizeof(VALUE) * winsize * h.tracks);
 	    while (!feof(f) && (cpos < region_size) && (pos < end)) {
 	      v ++;
 	      idx = (pos - start) / step;
 	      for (i = 0; i < h.tracks; i++) {
 		if (tarray[i]) {
-		  double *cv = binvalues + winsize * i + idx;
+		  VALUE *cv = binvalues + winsize * i + idx;
 		  switch (bfunc) {
 		  case 'a': // aggregate
 		    values[i] += *cv;
@@ -641,7 +814,7 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	      }
 	      if (fread(&pos, sizeof (ULONG) , 1, f)) {
 	      }
-	      if (fread(values, sizeof (double) , h.tracks, f)) {
+	      if (fread(values, sizeof (VALUE) , h.tracks, f)) {
 	      }
 	      cpos = ftell(f);
 	    }
@@ -650,8 +823,8 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	    for (j = 0; j < h.tracks; j++) {
 	      if (tarray[j]) {
 		RESULT* ptr = (res + i);
-		ptr->v = (double*) malloc(sizeof(double) * winsize);
-		memcpy(ptr->v, (binvalues + j*winsize), winsize * sizeof(double));
+		ptr->v = (VALUE*) malloc(sizeof(VALUE) * winsize);
+		memcpy(ptr->v, (binvalues + j*winsize), winsize * sizeof(VALUE));
 		i ++;
 	      }
 	    }	      	
@@ -670,7 +843,7 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	    printf("\n");
 
 	    if (fread(&pos, sizeof (ULONG) , 1, f)) {}
-	    if (fread(values, sizeof (double) , h.tracks, f)) {}
+	    if (fread(values, sizeof (VALUE) , h.tracks, f)) {}
 	    cpos = ftell(f);
 	  }
 	}
@@ -803,17 +976,17 @@ int mw_dump(char *fname, char *region, char *tracks) {
 	}
 
 	if (region_offset != -1) {
-	  double *values;
+	  VALUE *values;
 	  
 	  fseek(f, region_offset, SEEK_SET);
 	  cpos = ftell(f);
 
-	  values = malloc(sizeof(double) * (h.tracks));
+	  values = malloc(sizeof(VALUE) * (h.tracks));
 
 	  while (!feof(f) && (cpos < region_end) && (pos < start)) {
 	    if (fread(&pos, sizeof (ULONG) , 1, f)) {
 	    }
-	    if (fread(values, sizeof (double) , h.tracks, f)) {
+	    if (fread(values, sizeof (VALUE) , h.tracks, f)) {
 	    }
 	    cpos = ftell(f);
 	  }
@@ -833,7 +1006,7 @@ int mw_dump(char *fname, char *region, char *tracks) {
 		}
 	      }
 	      if (fread(&pos, sizeof (ULONG) , 1, f)) {}
-	      if (fread(values, sizeof (double) , h.tracks, f)) {}
+	      if (fread(values, sizeof (VALUE) , h.tracks, f)) {}
 	      cpos = ftell(f);
 	    }
 	  }
@@ -845,10 +1018,10 @@ int mw_dump(char *fname, char *region, char *tracks) {
 	  return -1;
 	}
       } else { // all regions
-	double *values;
+	VALUE *values;
 	ULONG tpos;
 
-	values = malloc(sizeof(double) * (h.tracks));
+	values = malloc(sizeof(VALUE) * (h.tracks));
 
 	region_offset = sizeof(HEADER) + sizeof(TRACK) * h.tracks;
 	fseek(f, region_offset, SEEK_SET);
@@ -871,7 +1044,7 @@ int mw_dump(char *fname, char *region, char *tracks) {
 		}
 	      }
 	      if (fread(&pos, sizeof (ULONG) , 1, f)) {}
-	      if (fread(values, sizeof (double) , h.tracks, f)) {}
+	      if (fread(values, sizeof (VALUE) , h.tracks, f)) {}
 	      cpos = ftell(f);
 	    }
 

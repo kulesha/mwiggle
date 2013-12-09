@@ -1,6 +1,8 @@
 #ifndef MULTI_WIGGLE
 #define MULTI_WIGGLE
 
+#define VALUE float
+
 typedef unsigned long ULONG;
 typedef unsigned short USHORT;
 typedef unsigned int UINT;
@@ -10,7 +12,7 @@ typedef unsigned char UCHAR;
 #define FORMAT_MWIG "wig"
 #define FORMAT_MBED "bed"
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 1
+#define VERSION_MINOR 2
 
 #define META_KEY_LEN 32
 #define META_VALUE_LEN 255
@@ -25,8 +27,8 @@ typedef struct {
 // track record
 typedef struct {
   USHORT id;
-  double min;
-  double max;
+  VALUE min;
+  VALUE max;
   UCHAR ori;
   char name[32];
   char desc[255];
@@ -41,8 +43,9 @@ typedef struct {
 
 typedef struct {
   TRACK t;
-  double *v;
+  VALUE *v;
 } RESULT;
+
 
 #define META_NUM 10 // fields in the header
 
@@ -55,8 +58,8 @@ typedef struct {
   ULONG offset; // where the real data start
   UINT taxon; // species id, e.g 284812 for s.pombe
   char assembly[64]; // assembly id in ENA, e.g GCA_000002945.2
-  double min; //min value across all tracks
-  double max; //max value across all tracks
+  VALUE min; //min value across all tracks
+  VALUE max; //max value across all tracks
   char desc[255]; //description of the file, e.g study GSE24360
 } HEADER;
 
