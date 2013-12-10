@@ -14,7 +14,7 @@ void usage( void ) {
   printf("\n************* mwiggle, version %d.%d *************\n* utility to create and query files containing *\n* multiple wiggle plots of genomic data        *\n************************************************\n", VERSION_MAJOR, VERSION_MINOR );
   printf("Usage:\n\n mwiggle COMMAND FILE PARAMS, e.g\n\nmwiggle create myfile.mw *.wig -t 9060 -a CRGh37 -d \"My study files\"\nmwiggle stats myfile.mw \nmwiggle dump myfile.mw [-r I:1-100] [-t 0,1]\nmwiggle fetch myfile.mw -r I:1-100 [-t 0,1] [-w 20]\n\n");
 
-  printf(" %ld, %ld , %ld , %ld , %ld, %ld \n", sizeof(UCHAR), sizeof(ULONG), sizeof(float), sizeof(double), sizeof(int), sizeof(short));
+  //  printf(" %ld, %ld , %ld , %ld , %ld, %ld \n", sizeof(UCHAR), sizeof(ULONG), sizeof(float), sizeof(double), sizeof(int), sizeof(short));
 }
 
 void print_stats(char *fname) {
@@ -61,8 +61,6 @@ void print_stats(char *fname) {
     } while (t->id);
     free(tracks);
   }
-
-
 }
 
 int get_data(char *fname, char **opts) {
@@ -334,10 +332,7 @@ int main (int argc, char **argv) {
   case 'c': // create
     if (mw_create(fname, argv, argc)) {
       usage();
-    } else {
-      printf("Created %s\n", fname);
-      print_stats(fname);
-    }
+    } 
     break;
   case 's': // stats
     print_stats(fname);

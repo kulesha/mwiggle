@@ -23,6 +23,7 @@ Contact: kulesh@gmail.com
 
 TRECORD *troot = NULL, *tcur = NULL;
 RRECORD *rroot = NULL, *rcur = NULL;
+static int verbose = 0;
 
 int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *desc ) {
   HEADER h;
@@ -30,6 +31,8 @@ int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *
   FILE *hf;
   char cmd[1024];
   VALUE minV, maxV;
+
+  printf("Creating MW file ...\n");
 
   chdir(workdir);
   sprintf(hfile, "%s.head", "test01");
@@ -104,11 +107,10 @@ int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *
   //printf("\n");
   system(cmd);
 
-
-  //sprintf(cmd, "rm *.chr* test01.* ");
-  //  printf(cmd);
-  //printf("\n");
-  system(cmd);
+  if (verbose < 100) {
+    sprintf(cmd, "rm -rf %s ", workdir);
+    system(cmd);
+  }
   
   return 0;
 }
@@ -138,8 +140,7 @@ int merge_regions (char* workdir,  int total ) {
 	  int l = pchr - e->d_name;
 	  strncpy(a.name, e->d_name, l);
 	  a.name[l] = '\0';
-
-	  printf(" %s ( %s)\n", e->d_name, a.name);
+	  printf(" - %s \n", a.name);
 	  if ( (r = fopen(e->d_name, "r"))) {
 	    ULONG pos, curpos = -1;
 	    VALUE val;
@@ -202,7 +203,7 @@ int sort_regions (char *workdir,  int total ) {
   if (d) {
     while ( (e = readdir(d)) != NULL) {
       if (strstr(e->d_name, ".chr")) {
-	printf(" %s\n", e->d_name);
+	printf(" - %s\n", e->d_name);
 	sprintf(cmd, "sort -g %s > %s_sorted", e->d_name, e->d_name);
 	//	printf("%s\n", cmd);
 	system(cmd);
@@ -255,7 +256,7 @@ int read_bedgraph (char *workdir, char *fname, int idx, int total) {
 
   if ((src = fopen(fname, "r"))) {
     int ic = 0, dc = 0, vc = 0;
-    printf(" * adding bedgraph %d of %d (%s) \n", idx+1, total, fname);
+    printf(" - adding bedgraph %d of %d (%s) \n", idx+1, total, fname);
     //    printf(" * tmp folder %s\n", workdir);
 
     while((read = getline(&line, &len, src)) > 0 ) {
@@ -310,9 +311,9 @@ int read_bedgraph (char *workdir, char *fname, int idx, int total) {
     slash = strrchr(fname, '/');
     
     if (slash) {
-      sprintf(a.desc, slash+1);
+      sprintf(a.desc, "%s", slash+1);
     } else {
-      sprintf(a.desc, fname);
+      sprintf(a.desc, "%s", fname);
     }
     dot = strrchr(a.desc, '.');
     if (dot) {
@@ -338,9 +339,9 @@ int read_bedgraph (char *workdir, char *fname, int idx, int total) {
     if (line) {
       free(line);
     }
-    printf("\t values range: %f .. %f\n", minV, maxV);
-
-
+    if (verbose) {
+      printf("\t values range: %f .. %f\n", minV, maxV);
+    }
   } else {
     printf("Error : could not open %s\n", fname);
   }  
@@ -373,7 +374,7 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
   char *slash, *dot;
 
   if ((src = fopen(fname, "r"))) {
-    printf(" * adding %d of %d (%s) \n", idx+1, total, fname);
+    printf(" - adding %d of %d (%s) \n", idx+1, total, fname);
 
     while((read = getline(&line, &len, src)) > 0 ) {
       int f = 1;
@@ -442,18 +443,21 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
 
     tcur = (TRECORD *) malloc(sizeof(TRECORD));
     slash = strrchr(fname, '/');
-    
+
     if (slash) {
-      sprintf(a.desc, slash+1);
+      sprintf(a.desc, "%s", slash+1);
     } else {
-      sprintf(a.desc, fname);
+      sprintf(a.desc, "%s", fname);
     }
     dot = strrchr(a.desc, '.');
+
     if (dot) {
+      memset(a.name, 0, sizeof(a.name));
       strncpy(a.name, a.desc, (dot - a.desc));
     } else {
       sprintf(a.name, a.desc);
     }
+
     sprintf(a.desc, description);
     a.id = idx;
     a.min = minV;
@@ -472,7 +476,9 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
   if (line) {
     free(line);
   }
-  printf("\t values range: %f .. %f\n", minV, maxV);
+  if (verbose) {
+    printf("\t values range: %f .. %f\n", minV, maxV);
+  }
   return 0;
 }
 
@@ -485,17 +491,26 @@ int mw_create(char *fname, char **argv, int argc) {
   char files[MAX_TRACKS][MAX_PATH];
 
   int i, num = 0;
+  char workdir[MAX_PATH];
+  char output[MAX_PATH];
 
-  char workdir[1024];
+  char *slash = strrchr(fname, '/');
 
-  sprintf(workdir, "%s" , get_tmp_folder());
-
-  printf(" Working in %s\n", workdir);
+  if (!slash) { // relative path - need to add the cur dir to the fname
+    getcwd(workdir, MAX_PATH);
+    sprintf(output, "%s/%s", workdir, fname);
+  } else {
+    sprintf(output, "%s", fname);
+  }
 
 
   while (*argv) {
     if ((*argv)[0] == '-') {
       switch((*argv)[1]) {
+      case 'v':
+	argv++;
+	verbose = atoi(*argv);
+	break;
       case 't':
 	argv++;
 	tmp = *argv;
@@ -522,12 +537,18 @@ int mw_create(char *fname, char **argv, int argc) {
        num ++;
     }
   }
-  
+
+  sprintf(workdir, "%s" , get_tmp_folder());
+  if (verbose) { 
+    printf(" Working in %s\n", workdir);
+  }
+
   if (!taxon || !assembly || !desc) {
     printf("Error: Taxonomy ID, Assembly and Description are required to create a MW file\n");
     return -1;
   }
 
+  printf("Reading files ...\n");
   for(i= 0; i < num ; i++) {
     char *ext = strrchr(files[i], '.');
     if (ext) {
@@ -550,9 +571,12 @@ int mw_create(char *fname, char **argv, int argc) {
     }
   }
 
-  printf("Taxon : %d\n", taxon);
-  printf("Assembly : %s\n", assembly);
-  printf("Description: %s\n", desc);
+  if (verbose) {
+    printf("Meta data:\n");
+    printf(" - Taxon : %d\n", taxon);
+    printf(" - Assembly : %s\n", assembly);
+    printf(" - Description: %s\n", desc);
+  }
 
   if (sort_regions(workdir, num) < 0) {
     return -1;
@@ -560,10 +584,11 @@ int mw_create(char *fname, char **argv, int argc) {
   if (merge_regions(workdir, num) < 0) {
     return -1;
   }
-  if ( create_index(workdir, fname, taxon, assembly, desc) < 0) {
+  if ( create_index(workdir, output, taxon, assembly, desc) < 0) {
     return -1;
   }
 
+  printf("%s has been created\n", output);
   return 0;
 }
 

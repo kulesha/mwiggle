@@ -12,11 +12,14 @@ typedef unsigned char UCHAR;
 #define FORMAT_MWIG "wig"
 #define FORMAT_MBED "bed"
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 2
+#define VERSION_MINOR 3
 
 #define META_KEY_LEN 32
 #define META_VALUE_LEN 255
 #define REGION_NAME_LEN 32
+
+#define MAX_PATH 1024
+
 
 // meta key from the header
 typedef struct {

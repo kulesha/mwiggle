@@ -5,5 +5,6 @@
 	bug fix: track name has  invalid characters
 	bug fix: result file is created in the tmp folder
 	added -v option for verbose output, -v 100 will keep the tmp files
+	removed the debug in usage
 	
 	
