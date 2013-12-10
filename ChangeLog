@@ -1,0 +1,9 @@
+#v0.3 2013/12/10
+	added the version check
+	bug fix: the last position of the requested regions is not reported
+	bug fix: the data not retrieved if the first requested position has data
+	bug fix: track name has  invalid characters
+	bug fix: result file is created in the tmp folder
+	added -v option for verbose output, -v 100 will keep the tmp files
+	
+	
