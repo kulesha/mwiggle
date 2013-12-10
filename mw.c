@@ -742,6 +742,12 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 
   if ( (f = fopen(fname, "r"))) {
     if (fread(&h, sizeof(HEADER), 1, f)) {
+      if (h.v_major != VERSION_MAJOR ) {
+	printf("Error: version mismatch. File has been created with mwiggle v%d.%d, but the current mwiggle is v%d.%d\n",
+	       h.v_major, h.v_minor, VERSION_MAJOR, VERSION_MINOR);
+	fclose(f);
+	return NULL;
+      }
       data_offset = h.offset;
       if (active < 0) { // all tracks 
 	active = h.tracks;
@@ -764,7 +770,7 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 
       for (i = 0; i<h.regions; i++) {
 	if (fread(&r, sizeof(REGION), 1, f)) {
-	  //	  printf(" %s : %ld\n", r.name, r.offset);
+	  //	  	  printf(" %s : %ld\n", r.name, r.offset);
 	  if (strcmp(r.name, region_name) == 0) {
 	    region_offset = r.offset + data_offset;
 	    region_size = r.size + region_offset;
@@ -778,7 +784,8 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	VALUE *values = malloc(sizeof(VALUE) * (h.tracks));
 	fseek(f, region_offset, SEEK_SET);
 	cpos = ftell(f);
-	  
+	//	printf(" we are at %ld ( total size %ld ) ( pos %ld . start %ld ) \n", cpos, region_size, pos, start);
+
 	while (!feof(f) && (cpos < region_size) && (pos < start)) {
 	  if (fread(&pos, sizeof (ULONG) , 1, f)) {
 	  }
@@ -787,7 +794,9 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	  cpos = ftell(f);
 	}
 
-	if (pos > start) {
+	//	printf(" we are at %ld ( total size %ld ) ( pos %ld . start %ld ) \n", cpos, region_size, pos, start);
+
+	if (pos >= start) {
 	  if (winsize) {
 	    float step = (end - start + 1) / (float)winsize;
 	    int v = 0;
