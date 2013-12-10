@@ -804,7 +804,7 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 
 	    VALUE *binvalues = malloc( sizeof(VALUE) * winsize * h.tracks);
 	    memset(binvalues, 0, sizeof(VALUE) * winsize * h.tracks);
-	    while (!feof(f) && (cpos < region_size) && (pos < end)) {
+	    while (!feof(f) && (cpos < region_size) && (pos <= end)) {
 	      v ++;
 	      idx = (pos - start) / step;
 	      for (i = 0; i < h.tracks; i++) {
@@ -842,7 +842,7 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
 	    return res;
 	  }
 
-	  while (!feof(f) && (cpos < region_size) && (pos < end)) {
+	  while (!feof(f) && (cpos < region_size) && (pos <= end)) {
 	    printf("%ld", pos);
 	    for (i = 0; i < h.tracks; i++) {
 	      if (tarray[i]) {
