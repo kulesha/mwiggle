@@ -27,3 +27,42 @@ add libs to the path
 
 export LD_LIBRARY_PATH=`pwd`/lib:$LD_LIBRARY_PATH
 
+Notes on integration with Ensembl Genomes
+=================================
+MW support has been added  from release/eg/22
+
+eg-web-common/modules/Bio/EnsEMBL/GlyphSet/mw.pm
+eg-web-common/modules/EnsEMBL/Web/ImageConfig.pm
+
+
+add path to the mwiggle installation in SiteDefs.pm, e.g
+   $SiteDefs::MWIGGLE_DIR= '/usr/local/mwiggle';
+
+configure MW tracks in species ini files, e.g
+
+[ENSEMBL_INTERNAL_MW_SOURCES]
+PMC3126782 = transcript
+PhyloCSF = transcript
+
+[PMC3126782]
+source_name = PMC3126782
+source_type = MW
+display = tiling
+description = Transcriptome profiling of chemosensory appendages in the malaria vector ( Study <a href='http://www.ncbi.nlm.nih.gov/pc/articles/PMC3126782'>PMC3126782</a> )
+source_url = /nfs/public/rw/ensembl/data/vectorbase/PMC3126782.mw
+score_colour = coral3
+
+[PhyloCSF]
+source_name = PhyloCSF
+source_type = MW
+display = tiling
+description = PhyloCSF: a comparative genomics method to distinguish protein coding and non-coding regions ( Study <a href='http://www.ncbi.nlm.nih.gov/pubmed/21685081'>21685081</a> )
+source_url = /nfs/public/rw/ensembl/data/vectorbase/PhyloCSF.mw
+score_colour = coral
+strand = b
+track_order = [1 3 5 0 2 4 6]
+track_colour = [burlywood1 burlywood1 burlywood1 burlywood1 burlywood1 burlywood1 chocolate3]
+
+
+
+
