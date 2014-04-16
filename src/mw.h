@@ -12,7 +12,7 @@ typedef unsigned char UCHAR;
 #define FORMAT_MWIG "wig"
 #define FORMAT_MBED "bed"
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 3
+#define VERSION_MINOR 4
 
 #define META_KEY_LEN 32
 #define META_VALUE_LEN 255
@@ -88,5 +88,6 @@ TRACK *mw_tracks (char *fname);
 REGION *mw_regions(char *fname);
 RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcount);
 int mw_dump(char *fname, char *region, char *tracks);
+int exists(char *fname, int t);
  
 #endif

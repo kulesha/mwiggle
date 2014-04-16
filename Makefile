@@ -1,12 +1,28 @@
-mwiggle: lib mwiggle.c
-	LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH
-	gcc -L. -Wall -lmw mwiggle.c -o mwiggle
+LIB_DIR := lib
+BIN_DIR := bin
+APP	:= $(BIN_DIR)/mwiggle
+LD_FLAGS	:= -Llib -lmw 
 
-lib: mw.o
-	gcc -shared -Wl,-soname,libmw.so -o libmw.so *.o
+all:	$(APP)
 
-mw.o: mw.c mw.h
-	gcc -Wall -fPIC -c mw.c
+test: $(APP)
+	cd tests; $(MAKE)
+
+$(APP): check
+	cd src; $(MAKE)
+
+
+check: $(LIB_DIR) $(BIN_DIR)
+
+$(LIB_DIR):
+	@mkdir $@
+
+$(BIN_DIR):
+	@mkdir $@
 
 clean: 
-	rm *.o *.so mwiggle
+	@rm -rf $(BIN_DIR) $(LIB_DIR)
+	cd src; $(MAKE) clean
+	cd tests; $(MAKE) clean
+
+

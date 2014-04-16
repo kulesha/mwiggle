@@ -10,7 +10,7 @@ Contact: kulesh@gmail.com
 #include <stdlib.h>
 #include <math.h> // atoi, atol
 #include <dirent.h> // readdir
-#include <sys/stat.h> // mkdir
+#include <sys/stat.h> // mkdir, stat
 
 #include <error.h>
 #include <errno.h>
@@ -20,6 +20,10 @@ Contact: kulesh@gmail.com
 #include "mw.h"
 
 #define MAX_PATH 1024
+
+#define RFILE "MW.regions"
+#define TFILE "MW.tracks"
+
 
 TRECORD *troot = NULL, *tcur = NULL;
 RRECORD *rroot = NULL, *rcur = NULL;
@@ -31,6 +35,13 @@ int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *
   FILE *hf;
   char cmd[1024];
   VALUE minV, maxV;
+  FILE *th, *rf;
+  char *line = NULL;
+  size_t len = 0;
+
+  TRACK a;
+  REGION r;
+
 
   printf("Creating MW file ...\n");
 
@@ -42,69 +53,74 @@ int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *
   h.v_minor = VERSION_MINOR;
   h.taxon = taxon;
   sprintf(h.assembly, assembly);
-
   sprintf(h.desc, desc);
-
   h.tracks = 0;
-  tcur = troot;
-  if (tcur) {
-    minV = tcur->data.min;
-    maxV = tcur->data.max;
-  }
-  while (tcur) {
-    if (minV > tcur->data.min) {
-      minV = tcur->data.min;
-    }
-
-    if (maxV < tcur->data.max) {
-      maxV = tcur->data.max;
-    }
-      
-    tcur = tcur->next;
-    h.tracks++;
-  }
-
   h.regions = 0;
+
+  if ((th = fopen(TFILE, "r"))) {
+    while(getline(&line, &len, th) > 0 ) {
+      if (sscanf(line, "%u %f %f %u %s %s", &a.id, &a.min, &a.max, &a.ori, a.name, a.desc) > 4) {
+	if (!h.tracks) {
+	  minV = a.min;
+	  maxV = a.max;
+	} else {
+	  if (minV > a.min) {
+	    minV = a.min;
+	  }
+	  if (maxV < a.max) {
+	    maxV = a.max;
+	  }
+	}
+	h.tracks++;
+      }
+    }    
+    fclose(th);
+  }
+
+  if (th = fopen(RFILE, "r")) {
+    while(getline(&line, &len, th) > 0 ) {
+      if (sscanf(line, "%s %ld %ld", &r.name, &r.offset, &r.size) == 3) {
+	h.regions++;
+      }
+    }    
+    fclose(th);
+  }
+
   h.min = minV;
   h.max = maxV;
 
-  rcur = rroot;
-  while (rcur) {
-    rcur = rcur->next;
-    h.regions++;
-  }
-
   h.offset = sizeof(HEADER) + sizeof(TRACK) * h.tracks + sizeof(REGION) * h.regions;
-  //  printf("\nFormat: %s\nVersion: %d.%d\nTracks: * %d\nRegions: %d\nOffset: %ld\nTaxon ID: %d\nAssembly: %s\nValues: %f .. %f\n\n", h.format, h.v_major, h.v_minor, h.tracks, h.regions, h.offset, h.taxon, h.assembly, h.min, h.max);
+  //  printf("\nFormat: %s\nVersion: %d.%d\nTracks: %d\nRegions: %d\nOffset: %ld\nTaxon ID: %d\nAssembly: %s\nValues: %f .. %f\n\n", h.format, h.v_major, h.v_minor, h.tracks, h.regions, h.offset, h.taxon, h.assembly, h.min, h.max);
 
 
   if ((hf = fopen(hfile,"w+"))) {
     fwrite(&h, sizeof(HEADER), 1, hf);
 
-    tcur = troot;
-    while (tcur) {
-      fwrite(tcur, sizeof(TRACK), 1, hf);
-      //      printf("%d: %s : %s ( %f .. %f )\n", tcur->data.id, tcur->data.name, tcur->data.desc, tcur->data.min, tcur->data.max);
-      tcur = tcur->next;
-      free(troot);
-      troot = tcur;
+    if (th = fopen(TFILE, "r")) {
+      while(getline(&line, &len, th) > 0 ) {
+	if (sscanf(line, "%d %f %f %d %s %s", &a.id, &a.min, &a.max, &a.ori, a.name, a.desc) > 4) {
+	  fwrite(&a, sizeof(TRACK), 1, hf);
+	}
+      }    
+      fclose(th);
     }
 
-
-    rcur = rroot;
-    while (rcur) {
-      fwrite(rcur, sizeof(REGION), 1, hf);
-      //      printf("%s : %ld : %ld\n", rcur->data.name, rcur->data.offset, rcur->data.size);
-      rcur = rcur->next;
-      free(rroot);
-      rroot = rcur;
+    if (th = fopen(RFILE, "r")) {
+      while(getline(&line, &len, th) > 0 ) {
+	if (sscanf(line, "%s %ld %ld", &r.name, &r.offset, &r.size) == 3) {
+	  fwrite(&r, sizeof(REGION), 1, hf);
+	}
+      }    
+      fclose(th);
     }
     fclose(hf);
   }
 
+  if (line) {
+    free(line);
+  }
+
   sprintf(cmd, "cat test01.head test01.body > %s", fname);
-  //  printf(cmd);
-  //printf("\n");
   system(cmd);
 
   if (verbose < 100) {
@@ -118,70 +134,91 @@ int create_index(char *workdir,  char *fname, UINT taxon, char *assembly, char *
 int merge_regions (char* workdir,  int total ) {
   struct dirent *e;
   DIR *d = opendir(".");
-  FILE *r, *b;
+  FILE *r, *b, *stat;
   char bfile[250];
+  char sfile[250];
   ssize_t read;
   size_t len = 0;
   char *line = NULL;
   REGION a;
-
+  char lname[MAX_PATH];
   VALUE* Values = malloc(sizeof(VALUE) * total);
+
+
+
   chdir(workdir);
-  d = opendir(".");
+
+  if (exists(RFILE, 1)) {
+    printf("Already merged ... \n");
+    return 0;
+  }
+
+  d = opendir("sorted");
 
   printf("Merging regions ...\n");
+
   if (d) {
-    sprintf(bfile, "%s.body", "test01");
-    if ((b = fopen(bfile,"w+"))) {
-      while ( (e = readdir(d)) != NULL) {
-	if (strstr(e->d_name, "_sorted")) {
-	  //	    sprintf(a.name, e->d_name);
-	  char *pchr = strrchr(e->d_name, '.');
-	  int l = pchr - e->d_name;
-	  strncpy(a.name, e->d_name, l);
-	  a.name[l] = '\0';
-	  printf(" - %s \n", a.name);
-	  if ( (r = fopen(e->d_name, "r"))) {
-	    ULONG pos, curpos = -1;
-	    VALUE val;
-	    int ind;
-	    int num;
+    if ((stat = fopen(RFILE,"w+"))) {
+      sprintf(bfile, "%s.body", "test01");
+      if ((b = fopen(bfile,"w+"))) {
+	while ( (e = readdir(d)) != NULL) {
+	  if (strstr(e->d_name, ".chr_sorted")) {
+	    char *pchr = strrchr(e->d_name, '.');
+	    int l = pchr - e->d_name;
+	    strncpy(a.name, e->d_name, l);
+	    a.name[l] = '\0';
+	    printf(" + %s \n", a.name);
+	    sprintf(lname, "sorted/%s", e->d_name);
 
-	    rcur = (RRECORD *) malloc(sizeof(RRECORD));
-	    a.offset = ftell(b);
-	    
-	    while((read = getline(&line, &len, r)) > 0 ) {
-	      if ((num = sscanf(line, "%ld %f %d", &pos, &val, &ind) == 3)) {
-		if ( curpos != pos ) {
-		  if (curpos != -1) {
-		    fwrite(&curpos, sizeof(curpos), 1, b);
-		    fwrite(Values, sizeof(VALUE), total, b);
-		  }
-		  curpos = pos;
-		  memset(Values, 0, total * sizeof(VALUE));
-		} 
-		*(Values + ind) = val;
+	    if ( (r = fopen(lname, "r"))) {
+	      ULONG pos, curpos = -1;
+	      VALUE val;
+	      int ind;
+	      int num;
+	      rcur = (RRECORD *) malloc(sizeof(RRECORD));
+	      a.offset = ftell(b);
+	      
+	      while((read = getline(&line, &len, r)) > 0 ) {
+		if ((num = sscanf(line, "%ld %f %d", &pos, &val, &ind) == 3)) {
+		  if ( curpos != pos ) {
+		    if (curpos != -1) {
+		      fwrite(&curpos, sizeof(curpos), 1, b);
+		      fwrite(Values, sizeof(VALUE), total, b);
+		    }
+		    curpos = pos;
+		    memset(Values, 0, total * sizeof(VALUE));
+		  } 
+		  *(Values + ind) = val;
+		}
 	      }
+
+	      a.size = ftell(b)-a.offset;
+
+	      fprintf(stat, "%s %ld %ld\n", a.name, a.offset, a.size);
+
+	      memcpy(&rcur->data, &a, sizeof(REGION));
+	      
+	      rcur->next = rroot;
+	      rcur->prev = NULL;
+	      
+	      if (rroot) {
+		rroot->prev = rcur;
+	      }
+	      rroot = rcur;
+	      
+	      fclose(r);
+	      
+	    } else {
+	      printf("Failed to open %s\n", lname);
 	    }
-
-	    a.size = ftell(b)-a.offset;
-	    memcpy(&rcur->data, &a, sizeof(REGION));
-
-	    rcur->next = rroot;
-	    rcur->prev = NULL;
-	    
-	    if (rroot) {
-	      rroot->prev = rcur;
-	    }
-	    rroot = rcur;
-
-	    fclose(r);
 	  }
 	}
+	fclose(b);
       }
-      fclose(b);
+      fclose(stat);
+    } else {
+      printf("Faild to open %s\n", RFILE);
     }
-    
   }
 
   if (Values) {
@@ -191,21 +228,58 @@ int merge_regions (char* workdir,  int total ) {
   return 0;
 }
 
+int exists(char *fname, int t) {
+  struct dirent *e;
+  DIR *d;
+  char cmd[200];
+  struct stat s;
+
+  int err = stat(fname, &s);
+
+  if (err == -1){
+    if (errno == ENOENT) {
+    }
+  } else {
+    if (t == 2) {
+      if (S_ISDIR(s.st_mode)) {
+	return 1;
+      }
+    }
+    if (t == 1) {
+      if (S_ISREG(s.st_mode)) {
+	return 1;
+      }
+    }
+  }
+  return 0;    
+}
+
 int sort_regions (char *workdir,  int total ) {
-  
   struct dirent *e;
   DIR *d;
   char cmd[200];
   chdir(workdir);
+  struct stat s;
+
+  int err = stat("sorted", &s);
+  if (err == -1){
+    if (errno == ENOENT) {
+    }
+  } else {
+    if (S_ISDIR(s.st_mode)) {
+      printf(" - regions already sorted \n");
+      return 0;
+    }
+  }
 
   d = opendir(".");
   printf("Sorting regions ... \n");
+  system("mkdir sorted");
   if (d) {
     while ( (e = readdir(d)) != NULL) {
       if (strstr(e->d_name, ".chr")) {
 	printf(" - %s\n", e->d_name);
-	sprintf(cmd, "sort -g %s > %s_sorted", e->d_name, e->d_name);
-	//	printf("%s\n", cmd);
+	sprintf(cmd, "sort -g %s > sorted/%s_sorted", e->d_name, e->d_name);
 	system(cmd);
       }
     }
@@ -232,6 +306,7 @@ char* get_tmp_folder (void) {
 int read_bedgraph (char *workdir, char *fname, int idx, int total) {
   FILE *src;
   FILE *header = NULL;
+  FILE *stat;
 
   char hfile[255];
 
@@ -253,98 +328,108 @@ int read_bedgraph (char *workdir, char *fname, int idx, int total) {
   VALUE maxV;
   int vSet = 0;
   char *slash, *dot;
+  char sfile[255];
 
-  if ((src = fopen(fname, "r"))) {
-    int ic = 0, dc = 0, vc = 0;
-    printf(" - adding bedgraph %d of %d (%s) \n", idx+1, total, fname);
-    //    printf(" * tmp folder %s\n", workdir);
+  sprintf(sfile, "%s/%s", workdir, TFILE);
+  
+  if ((stat = fopen(sfile, "a+"))) {
+    if ((src = fopen(fname, "r"))) {
+      int ic = 0, dc = 0, vc = 0;
+      printf(" - adding bedgraph %d of %d (%s) \n", idx+1, total, fname);
 
-    while((read = getline(&line, &len, src)) > 0 ) {
-      ic ++;
-      if (*line == '#') {
-      } else {
-	dc ++;
-	if ((num = sscanf(line, "%s\t%ld\t%ld\t%f", region, &rStart, &rEnd, &val) == 4)) {
-	  vc ++;
-	  if (strcmp(curRegion, region) != 0) {
-	    //	      	      printf(" write %s \n", region);
-	    strcpy(curRegion, region);
-	    sprintf(hfile, "%s/%s.chr", workdir, region);
-	    //	    printf(" writing to %s\n", hfile);
-	    if (header) {
-	      fclose(header);
+      while((read = getline(&line, &len, src)) > 0 ) {
+	ic ++;
+	if (*line == '#') {
+	} else {
+	  dc ++;
+	  if ((num = sscanf(line, "%s\t%ld\t%ld\t%f", region, &rStart, &rEnd, &val) == 4)) {
+	    vc ++;
+	    if (strcmp(curRegion, region) != 0) {
+	      //	      printf(" write %s \n", region);
+	      strcpy(curRegion, region);
+	      sprintf(hfile, "%s/%s.chr", workdir, region);
+	      //	    	    printf(" writing to %s\n", hfile);
+	      if (header) {
+		fclose(header);
+	      }
+	      
+	      if ((header = fopen(hfile, "a+"))) {
+		//	      		printf("opened %s \n", hfile);
+	      } else {
+		printf(" Cannot open %s ", hfile);
+		exit(-1);
+	      }
 	    }
-
-	    if ((header = fopen(hfile, "a+"))) {
-	      //		printf("opened %s (%d) \n", hfile, state);
+	    
+	    if (vSet) {
+	      if (minV > val ) {
+		minV = val ;
+	      }
+	      if (maxV < val ) {
+		maxV = val ;
+	      }
 	    } else {
-	      printf(" Cannot open %s ", hfile);
-	      exit(-1);
+	      vSet = 1;
+	      minV = val;
+	      maxV = val;
 	    }
-	  }
-
-	  if (vSet) {
-	    if (minV > val ) {
-	      minV = val ;
+	    
+	    for (pos = rStart; pos <=rEnd; pos ++) {
+	      fprintf(header, "%ld %f %d\n", pos, val, idx);
 	    }
-	    if (maxV < val ) {
-	      maxV = val ;
-	    }
-	  } else {
-	    vSet = 1;
-	    minV = val;
-	    maxV = val;
-	  }
-
-	  for (pos = rStart; pos <=rEnd; pos ++) {
-	    fprintf(header, "%ld %f %d\n", pos, val, idx);
 	  }
 	}
       }
-    }
-    fclose(header);
-    fclose(src);
-
-    //    printf("%d / %d / %d \n", vc, dc, ic);
-
-    tcur = (TRECORD *) malloc(sizeof(TRECORD));
-    slash = strrchr(fname, '/');
+      fclose(header);
     
-    if (slash) {
-      sprintf(a.desc, "%s", slash+1);
-    } else {
-      sprintf(a.desc, "%s", fname);
-    }
-    dot = strrchr(a.desc, '.');
-    if (dot) {
-      strncpy(a.name, a.desc, (dot - a.desc));
-    } else {
-      sprintf(a.name, a.desc);
-    }
-    sprintf(a.desc, description);
-    a.id = idx;
-    a.min = minV;
-    a.max = maxV;
-    a.ori = 1;
-    memcpy(&tcur->data, &a, sizeof(TRACK));
-    tcur->next = troot;
-    tcur->prev = NULL;
+      fclose(src);
 
-    if (troot) {
-      troot->prev = tcur;
-    }
-    troot = tcur;
-  
+      //      printf("vc = %d / dc = %d / ic = %d \n", vc, dc, ic);
 
-    if (line) {
-      free(line);
-    }
-    if (verbose) {
-      printf("\t values range: %f .. %f\n", minV, maxV);
-    }
+      tcur = (TRECORD *) malloc(sizeof(TRECORD));
+      slash = strrchr(fname, '/');
+      
+      if (slash) {
+	sprintf(a.desc, "%s", slash+1);
+      } else {
+	sprintf(a.desc, "%s", fname);
+      }
+      dot = strrchr(a.desc, '.');
+      if (dot) {
+	strncpy(a.name, a.desc, (dot - a.desc));
+      } else {
+	sprintf(a.name, a.desc);
+      }
+      sprintf(a.desc, description);
+      a.id = idx;
+      a.min = minV;
+      a.max = maxV;
+      a.ori = 1;
+      memcpy(&tcur->data, &a, sizeof(TRACK));
+      fprintf(stat, "%d %f %f %d %s %s\n",
+	      a.id, a.min, a.max, a.ori, a.name, a.desc);
+      tcur->next = troot;
+      tcur->prev = NULL;
+
+      if (troot) {
+	troot->prev = tcur;
+      }
+      troot = tcur;
+      
+
+      if (line) {
+	free(line);
+      }
+      if (verbose) {
+	printf("\t values range: %f .. %f\n", minV, maxV);
+      }
+    } else {
+      printf("Error : could not open %s\n", fname);
+    }  
+    fclose(stat);
   } else {
-    printf("Error : could not open %s\n", fname);
-  }  
+    printf("Error : could not open %s\n", TFILE);
+  }
   return 0;
 }
 
@@ -374,7 +459,7 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
   char *slash, *dot;
 
   if ((src = fopen(fname, "r"))) {
-    printf(" - adding %d of %d (%s) \n", idx+1, total, fname);
+    printf(" - adding wig track %d of %d (%s) \n", idx+1, total, fname);
 
     while((read = getline(&line, &len, src)) > 0 ) {
       int f = 1;
@@ -383,7 +468,7 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
 	case 0:
 	  if ((num = sscanf(line, "%s %s %s", strStep, strChr, strSpan) == 3)) {
 	    sscanf(strChr, "chrom=%s", region);
-	    //	    printf("A: %s  * %s * %s \n ", strChr, region, curRegion);
+	    	    printf("A: %s  * %s * %s \n ", strChr, region, curRegion);
 	    if (strstr(strStep, "fixed") != NULL) {
 	      step = 1;
 	      state = 1; // fixed step
@@ -391,9 +476,9 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
 	      state = 2; // variable step
 	    }
 	    f = 0;
-	    //	    printf("B: %s * %s \n ", region, curRegion);
+	    	    printf("B: %s * %s \n ", region, curRegion);
 	    if (strcmp(curRegion, region) != 0) {
-	      //	      	      printf(" write %s \n", region);
+	      	      	      printf(" write %s \n", region);
 	      strcpy(curRegion, region);
 	      sprintf(hfile, "%s/%s.chr", workdir, region);
 	      if (header) {
@@ -401,7 +486,7 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
 	      }
 
 	      if ((header = fopen(hfile, "a+"))) {
-		//		printf("opened %s (%d) \n", hfile, state);
+				printf("opened %s (%d) \n", hfile, state);
 	      } else {
 		printf(" Cannot open %s ", hfile);
 		exit(-1);
@@ -482,12 +567,32 @@ int read_wig (char *workdir, char *fname, int idx, int total) {
   return 0;
 }
 
+int get_regions(char *workdir) {
+  struct dirent *e;
+  DIR *d;
+  char cmd[200];
+
+  d = opendir(workdir);
+  if (d) {
+    while ( (e = readdir(d)) != NULL) {
+      if (strstr(e->d_name, ".chr")) {
+	printf(" - regions retrieved .. \n");
+	closedir(d);
+	return 1;
+      }
+    }
+    closedir(d);
+  }
+  return 0;
+}
 
 int mw_create(char *fname, char **argv, int argc) {
   int taxon = 0;
   char *tmp = NULL;
   char *assembly = NULL;
   char *desc = NULL;
+  char *wdir = NULL;
+
   char files[MAX_TRACKS][MAX_PATH];
 
   int i, num = 0;
@@ -503,7 +608,6 @@ int mw_create(char *fname, char **argv, int argc) {
     sprintf(output, "%s", fname);
   }
 
-
   while (*argv) {
     if ((*argv)[0] == '-') {
       switch((*argv)[1]) {
@@ -516,8 +620,7 @@ int mw_create(char *fname, char **argv, int argc) {
 	tmp = *argv;
 	if ((taxon = atoi(tmp)) == 0) {
 	  printf("Error: invalid Taxonomy ID %s\n", tmp);
-	}
-	
+	}	
 	break;
       case 'a':
 	argv++;
@@ -526,6 +629,10 @@ int mw_create(char *fname, char **argv, int argc) {
       case 'd':
 	argv++;
 	desc = *argv;
+	break;
+      case 'w': // use this work dir - possibly to pick up from previous step
+	argv++;
+	wdir = *argv;
 	break;
       default:
 	printf("Error: unknown option -%c\n", (*argv)[1]);
@@ -538,7 +645,12 @@ int mw_create(char *fname, char **argv, int argc) {
     }
   }
 
-  sprintf(workdir, "%s" , get_tmp_folder());
+  if(wdir) {
+    sprintf(workdir, "%s", wdir);
+  } else {
+    sprintf(workdir, "%s" , get_tmp_folder());
+  }
+
   if (verbose) { 
     printf(" Working in %s\n", workdir);
   }
@@ -547,27 +659,31 @@ int mw_create(char *fname, char **argv, int argc) {
     printf("Error: Taxonomy ID, Assembly and Description are required to create a MW file\n");
     return -1;
   }
+  
 
-  printf("Reading files ...\n");
-  for(i= 0; i < num ; i++) {
-    char *ext = strrchr(files[i], '.');
-    if (ext) {
-      ext++;
-      if (strcmp(ext, "wig") == 0) {
-	if (read_wig(workdir, files[i], i, num) < 0) {
-	  printf("Error : could not parse WIG in %s\n", files[i]);
+  
+  if (! get_regions(workdir)) {
+    printf("Reading files ...\n");
+    for(i= 0; i < num ; i++) {
+      char *ext = strrchr(files[i], '.');
+      if (ext) {
+	ext++;
+	if (strcmp(ext, "wig") == 0) {
+	  if (read_wig(workdir, files[i], i, num) < 0) {
+	    printf("Error : could not parse WIG in %s\n", files[i]);
+	    return -1;
+	  }
+	} else if (strcmp(ext, "bedgraph") == 0) {
+	  if (read_bedgraph(workdir, files[i], i, num) < 0) {
+	    printf("Error : could not parse BedGraph in %s\n", files[i]);
+	    return -1;
+	  }
+	} else {
+	  printf(" Error: Unknown file format %s\n", files[i]);
 	  return -1;
 	}
-      } else if (strcmp(ext, "bedgraph") == 0) {
-	if (read_bedgraph(workdir, files[i], i, num) < 0) {
-	  printf("Error : could not parse BedGraph in %s\n", files[i]);
-	  return -1;
-	}
-      } else {
-	printf(" Error: Unknown file format %s\n", files[i]);
-	return -1;
+	
       }
-
     }
   }
 
@@ -627,11 +743,13 @@ TRACK *mw_tracks (char *fname) {
   FILE *f;
   HEADER h;
   TRACK *tracks = NULL;
+  TRACK *tmp;
+
   int i = 0;
 
   if ( (f = fopen(fname, "r"))) {
     if (fread(&h, sizeof(HEADER), 1, f)) {
-      tracks =  malloc(sizeof(TRACK) * h.tracks );
+      tracks =  malloc(sizeof(TRACK) * (h.tracks + 1));
       for (i = 0; i<h.tracks; i++) {
 	if ( !fread((tracks+i), sizeof(TRACK), 1, f)) {
 	  printf("Error: could not read from %s\n", fname);
@@ -640,6 +758,8 @@ TRACK *mw_tracks (char *fname) {
 	  return NULL;
 	} 
       }
+      (tracks+h.tracks)->id = 65535; // to indicate the end of the list
+
     } else {
       printf("Error: could not read %s\n", fname);
       fclose(f);
@@ -892,6 +1012,8 @@ RESULT *mw_fetch(char *fname, char *region, char *tracks, int winsize, int *tcou
       printf("Error: could not read %s\n", fname);
     }
     fclose(f);
+  } else {
+    printf("Error: could not open %s\n", fname);
   }
 
   return NULL;

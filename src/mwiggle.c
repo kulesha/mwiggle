@@ -50,6 +50,7 @@ void print_stats(char *fname) {
     TRACK *t;
     printf("*** Tracks *** \n");
     i = 0;
+
     do {
       t = tracks+i;
       printf("Track ID: %d\n", t->id);
@@ -58,7 +59,7 @@ void print_stats(char *fname) {
       printf("\t Values : %f .. %f\n", t->min, t->max);
       printf("\t Desc   : %s\n", t->desc);
       i++;
-    } while (t->id);
+    } while ((tracks+i)->id != 65535);
     free(tracks);
   }
 }
